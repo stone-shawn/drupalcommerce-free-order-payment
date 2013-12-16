@@ -1,0 +1,104 @@
+<?php
+
+
+/**
+ * Implements hook_commerce_payment_method_info().
+ */
+function free_order_payment_commerce_payment_method_info() {
+  $payment_methods = array();
+
+  $payment_methods['free_order_payment'] = array(
+    'title' => t('Free order payment'),
+    'description' => t('When your order amount is $0.00, please use this payment'),
+  );
+
+  return $payment_methods;
+}
+
+/**
+ * Payment method callback: submit form.
+ */
+function free_order_payment_submit_form($payment_method, $pane_values, $checkout_pane, $order) {
+  $form = array();
+  if (!empty($order->data['free_order_payment'])) {
+    $pane_values += $order->data['free_order_payment'];
+  }
+  return $form;
+}
+
+/**
+ * Payment method callback: submit form validation.
+ */
+function free_order_payment_submit_form_validate($payment_method, $pane_form, $pane_values, $order, $form_parents = array()) {
+  $balance = commerce_payment_order_balance($order);
+  if($balance['amount'] > 0) {
+    form_set_error(implode('][', array_merge($form_parents, array('name'))), t('You can not use free payment when order amount is not 0.'));
+    return FALSE;
+  }
+}
+
+/**
+ * Payment method callback: submit form submission.
+ */
+function free_order_payment_submit_form_submit($payment_method, $pane_form, $pane_values, $order, $charge) {
+  $order->data['free_order_payment'] = $pane_values;
+
+  free_order_payment_transaction($payment_method, $order, $charge);
+}
+
+/**
+ * Creates an example payment transaction for the specified charge amount.
+ *
+ * @param $payment_method
+ *   The payment method instance object used to charge this payment.
+ * @param $order
+ *   The order object the payment applies to.
+ * @param $charge
+ *   An array indicating the amount and currency code to charge.
+ * @param $name
+ *   The name entered on the submission form.
+ */
+function free_order_payment_transaction($payment_method, $order, $charge) {
+  $transaction = commerce_payment_transaction_new('free_order_payment', $order->order_id);
+  $transaction->instance_id = $payment_method['instance_id'];
+  $transaction->amount = $charge['amount'];
+  $transaction->currency_code = $charge['currency_code'];
+  $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+  $transaction->message = 'Info: @info';
+  $transaction->message_variables = array('@info' => t('Use free order payment'));
+  commerce_payment_transaction_save($transaction);
+}
+
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function free_order_payment_form_commerce_checkout_form_alter(&$form, &$form_state) {
+  $balance = commerce_payment_order_balance($form_state['order']);
+  if($balance['amount'] <= 0) {
+    $only_free_payment = true;
+  } else {
+    $only_free_payment = false;
+  }
+
+  if (!empty($form['commerce_payment']['payment_method']['#options'])) {
+    foreach ($form['commerce_payment']['payment_method']['#options'] as $key => &$value) {
+      list($method_id, $rule_name) = explode('|', $key);
+      if($only_free_payment && $method_id != 'free_order_payment') {
+        unset($form['commerce_payment']['payment_method']['#options'][$key]);
+        unset($form['commerce_payment']['payment_methods']['#value'][$key]);
+
+        if(isset($form['commerce_payment']['payment_details']))
+          unset($form['commerce_payment']['payment_details']);
+
+      } else if(!$only_free_payment && $method_id == 'free_order_payment') {
+        unset($form['commerce_payment']['payment_method']['#options'][$key]);
+        unset($form['commerce_payment']['payment_methods']['#value'][$key]);
+      } else if($method_id == 'free_order_payment') {
+        $form['commerce_payment']['#attributes'] = array('style' => array('display:none'));
+        $form['commerce_payment']['payment_method']['#default_value'] = $key;
+      }
+    }
+  }
+}
+

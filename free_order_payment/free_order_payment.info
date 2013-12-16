@@ -1,0 +1,9 @@
+name = Free order payment
+description = Handle the payment when order amount is $0.00.
+package = Commerce (Payment)
+dependencies[] = commerce
+dependencies[] = commerce_payment
+core = 7.x
+version = "7.x-1.0"
+core = "7.x"
+
